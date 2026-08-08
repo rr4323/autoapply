@@ -1,0 +1,538 @@
+openapi: 3.0.3
+info:
+  title: AgentOS API
+  version: "1.0"
+  description: >
+    REST contract between the React frontend and the Go control plane.
+    Human-readable companion: ../../docs/API_REFERENCE.md — read that first for
+    rationale; this file is the machine-readable source of truth for codegen,
+    Postman/Swagger import, and contract testing.
+servers:
+  - url: /api/v1
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      summary: Log in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expires_at: { type: string, format: date-time }
+                  user: { $ref: "#/components/schemas/UserSummary" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /auth/logout:
+    post:
+      summary: Log out (invalidate current token)
+      responses:
+        "200": { description: OK }
+
+  /auth/session:
+    get:
+      summary: Check current session validity
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/UserSummary" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /applications:
+    post:
+      summary: Submit a JD manually
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jd_url: { type: string, format: uri }
+                jd_text: { type: string }
+              description: Exactly one of jd_url or jd_text is required.
+      responses:
+        "202":
+          description: Accepted, processing started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationCreated" }
+        "400": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List applications for the current user
+      parameters:
+        - in: query
+          name: status
+          schema: { type: array, items: { $ref: "#/components/schemas/ApplicationStatus" } }
+          style: form
+          explode: true
+        - in: query
+          name: source
+          schema: { type: string, enum: [manual, discovered] }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApplicationSummary" }
+                  next_cursor: { type: string, nullable: true }
+
+  /applications/bulk-confirm-submit:
+    post:
+      summary: Bulk-approve applications in the high-confidence review band
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: OK — check per-item results, partial failure is expected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        status: { type: string }
+                        error: { type: string, nullable: true }
+
+  /applications/{id}:
+    get:
+      summary: Full application detail
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /applications/{id}/confirm-submit:
+    post:
+      summary: Confirm a single ready_for_review application
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string }
+                  submitted_at: { type: string, format: date-time, nullable: true }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /applications/{id}/resolve-input:
+    post:
+      summary: Answer flagged fields for a needs_input application
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fields]
+              properties:
+                fields:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      field_name: { type: string }
+                      value: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string }
+
+  /applications/{id}/outcome:
+    patch:
+      summary: User-supplied outcome update
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              properties:
+                outcome: { type: string, enum: [interview, rejected, no_response] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  outcome: { type: string }
+
+  /profile:
+    get:
+      summary: Get the current user's profile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+    put:
+      summary: Update profile (triggers re-chunking/re-embedding)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Profile" }
+      responses:
+        "202":
+          description: Accepted, reindexing in progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  reindexing: { type: boolean }
+
+  /profile/resume:
+    post:
+      summary: Upload a new base resume file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "202":
+          description: Accepted, reindexing in progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  base_resume_doc_id: { type: string }
+                  reindexing: { type: boolean }
+
+  /search-criteria:
+    get:
+      summary: Get the current user's Ingestion Cron search criteria
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchCriteria" }
+    put:
+      summary: Update search criteria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchCriteria" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchCriteria" }
+
+  /policy/thresholds:
+    get:
+      summary: Read-only Policy Engine thresholds the UI needs to render (e.g. confidence bands)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  min_generate_score: { type: integer }
+                  min_autosubmit_score: { type: integer }
+
+  /eval/latest:
+    get:
+      summary: Latest evaluation harness results (admin/debug)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_type: { type: string }
+                  dataset_version: { type: string }
+                  completed_at: { type: string, format: date-time }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        metric_name: { type: string }
+                        value: { type: number }
+
+  /mlops/models:
+    get:
+      summary: List model versions and their MLflow stage (admin/debug)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        mlflow_model_name: { type: string }
+                        mlflow_version: { type: integer }
+                        current_stage: { type: string, enum: [None, Staging, Production, Archived] }
+                        promoted_at: { type: string, format: date-time, nullable: true }
+                        eval_metrics: { type: object }
+
+  /mlops/drift:
+    get:
+      summary: Recent drift checks (admin/debug)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        checked_at: { type: string, format: date-time }
+                        metric_name: { type: string }
+                        value: { type: number }
+                        baseline_value: { type: number }
+                        breached: { type: boolean }
+
+  /mlops/models/{id}/approve:
+    post:
+      summary: Human approval step to promote a candidate model to Production
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  current_stage: { type: string }
+                  promoted_at: { type: string, format: date-time }
+                  promoted_by: { type: string }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ApplicationId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+                  details: { type: object }
+
+  schemas:
+    ApplicationStatus:
+      type: string
+      enum: [pending, scored, below_threshold, filling, ready_for_review, needs_input, submitted, failed]
+
+    UserSummary:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+
+    ApplicationCreated:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string }
+        source: { type: string }
+        created_at: { type: string, format: date-time }
+
+    ApplicationSummary:
+      type: object
+      properties:
+        id: { type: string }
+        company: { type: string }
+        role_title: { type: string }
+        source: { type: string, enum: [manual, discovered] }
+        jd_fit_score: { type: integer }
+        resume_match_score: { type: integer }
+        status: { $ref: "#/components/schemas/ApplicationStatus" }
+        bot_check_detected: { type: boolean }
+        submitted_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ApplicationDetail:
+      allOf:
+        - $ref: "#/components/schemas/ApplicationSummary"
+        - type: object
+          properties:
+            jd_url: { type: string, nullable: true }
+            score_breakdown:
+              type: object
+              properties:
+                deterministic_keyword_overlap: { type: number }
+                llm_semantic_score: { type: number }
+                final_score: { type: integer }
+                reasons: { type: array, items: { type: string } }
+            retrieved_evidence:
+              type: array
+              items:
+                type: object
+                properties:
+                  chunk_id: { type: string }
+                  text: { type: string }
+                  similarity: { type: number }
+            generated_documents:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  type: { type: string, enum: [resume, cover_letter, screener_answer] }
+                  storage_ref: { type: string }
+                  source_chunk_ids: { type: array, items: { type: string } }
+                  groundedness_score: { type: number }
+            policy_decisions:
+              type: array
+              items:
+                type: object
+                properties:
+                  decision_point: { type: string }
+                  action: { type: string }
+                  reasons: { type: array, items: { type: string } }
+                  created_at: { type: string, format: date-time }
+            outcome: { type: string, nullable: true, enum: [interview, rejected, no_response, null] }
+            updated_at: { type: string, format: date-time }
+
+    Profile:
+      type: object
+      properties:
+        id: { type: string }
+        base_resume_doc_id: { type: string }
+        skills: { type: array, items: { type: string } }
+        experience:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              company: { type: string }
+              title: { type: string }
+              start_date: { type: string }
+              end_date: { type: string, nullable: true }
+              bullets: { type: array, items: { type: string } }
+
+    SearchCriteria:
+      type: object
+      properties:
+        id: { type: string }
+        query_json:
+          type: object
+          properties:
+            domains: { type: array, items: { type: string } }
+            roles: { type: array, items: { type: string } }
+            keywords: { type: array, items: { type: string } }
+            locations: { type: array, items: { type: string } }
+        active: { type: boolean }
