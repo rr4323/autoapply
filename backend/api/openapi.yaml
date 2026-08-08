@@ -278,7 +278,7 @@ paths:
 
   /search-criteria:
     get:
-      summary: Get the current user's Ingestion Cron search criteria
+      summary: Get shared ingestion config (ATS platforms, exclusions) — applies to every search profile
       responses:
         "200":
           description: OK
@@ -286,7 +286,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SearchCriteria" }
     put:
-      summary: Update search criteria
+      summary: Update shared ingestion config
       requestBody:
         required: true
         content:
@@ -298,6 +298,84 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SearchCriteria" }
+
+  /search-profiles:
+    get:
+      summary: List this user's search profiles (max 3 active — TDD §3.1.1)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/SearchProfile" }
+    post:
+      summary: Create a new search profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchProfileFacets" }
+      responses:
+        "201":
+          description: Created — includes compiled_query_text
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchProfile" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /search-profiles/{id}:
+    put:
+      summary: Update a search profile (server recompiles the query)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchProfileFacets" }
+      responses:
+        "200":
+          description: OK — includes the recompiled compiled_query_text
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchProfile" }
+    delete:
+      summary: Remove a search profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+
+  /search-profiles/preview:
+    post:
+      summary: Compile a profile's facets into a query string without saving (live preview; no id needed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchProfileFacets" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  compiled_query_text: { type: string }
+                  estimated_length_chars: { type: integer }
+                  within_length_limit: { type: boolean }
 
   /policy/thresholds:
     get:
@@ -456,6 +534,8 @@ components:
         company: { type: string }
         role_title: { type: string }
         source: { type: string, enum: [manual, discovered] }
+        search_profile_id: { type: string, nullable: true, description: "Null for manual-source applications." }
+        search_profile_name: { type: string, nullable: true }
         jd_fit_score: { type: integer }
         resume_match_score: { type: integer }
         status: { $ref: "#/components/schemas/ApplicationStatus" }
@@ -526,13 +606,43 @@ components:
 
     SearchCriteria:
       type: object
+      description: >
+        Shared ingestion config (one per user) — applies to every search profile.
+        Split from SearchProfile specifically to avoid role×skill cross-pollination;
+        see TDD §3.1.1.
       properties:
-        id: { type: string }
-        query_json:
-          type: object
+        ats_domain_allowlist: { type: array, items: { type: string }, example: ["greenhouse.io", "lever.co"] }
+        exclusion_terms:
+          type: array
+          items: { type: string }
+          example: ["staffing agency", "intern", "contract to hire"]
+          description: Rendered as -"term" in every profile's compiled query. Defaults to a suggested set; user-editable.
+
+    SearchProfileFacets:
+      type: object
+      description: >
+        Per-track facets (TDD §3.1.1) — one search profile is one role/skill/location
+        combination, e.g. "AI Engineer track". Max 3 active profiles per user.
+      properties:
+        name: { type: string, example: "AI Engineer track" }
+        role_titles: { type: array, items: { type: string }, example: ["senior AI engineer", "AI/ML engineer"] }
+        title_scoped:
+          type: boolean
+          default: true
+          description: Whether role_titles are wrapped in intitle:(...) for precision, vs. a bare keyword match.
+        skill_keywords: { type: array, items: { type: string }, example: ["LLM", "LangChain", "Python"] }
+        locations: { type: array, items: { type: string }, example: ["remote", "Bangalore"] }
+
+    SearchProfile:
+      allOf:
+        - $ref: "#/components/schemas/SearchProfileFacets"
+        - type: object
           properties:
-            domains: { type: array, items: { type: string } }
-            roles: { type: array, items: { type: string } }
-            keywords: { type: array, items: { type: string } }
-            locations: { type: array, items: { type: string } }
-        active: { type: boolean }
+            id: { type: string }
+            compiled_query_text:
+              type: string
+              description: >
+                Server-computed, includes this profile's facets plus the shared
+                SearchCriteria (platform/exclusions). Never write to this field directly.
+            compiled_at: { type: string, format: date-time }
+            active: { type: boolean }

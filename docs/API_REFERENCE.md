@@ -99,6 +99,8 @@ List applications for the current user.
       "company": "Acme Corp",
       "role_title": "Senior Backend Engineer",
       "source": "discovered",
+      "search_profile_id": "sp_1",
+      "search_profile_name": "AI Engineer track",
       "jd_fit_score": 82,
       "resume_match_score": 79,
       "status": "ready_for_review",
@@ -124,6 +126,8 @@ Full detail — this is what the Apply view's score breakdown (TDD §6.4) and th
   "role_title": "Senior Backend Engineer",
   "jd_url": "https://boards.greenhouse.io/acme/jobs/12345",
   "source": "discovered",
+  "search_profile_id": "sp_1",
+  "search_profile_name": "AI Engineer track",
   "status": "ready_for_review",
   "jd_fit_score": 82,
   "resume_match_score": 79,
@@ -247,15 +251,57 @@ Upload a new base resume file. Field name: `file`.
 
 ---
 
-## 4. Search Criteria (Ingestion, PRD §5.0.1)
+## 4. Search Criteria & Search Profiles (Ingestion, PRD §5.0.1 / TDD §3.1.1)
 
-### `GET /api/v1/search-criteria`
+**Two-level model, not a single facet set**: `search-criteria` is shared config (one per user — which ATS platforms, what to exclude); `search-profiles` is per-track config (up to 3 per user — role, skills, location for one search intent, e.g. "AI Engineer track"). This split exists specifically to avoid cross-pollination — one flat role×skill list would let "senior backend engineer" match against "LangChain" even though that pairing was never intended (TDD §3.1.1 has the full reasoning). **The frontend should render this as: one shared settings panel (platforms + exclusions) plus a list of named profile cards (add/edit/delete/toggle active), not a single form.**
+
+### `GET /api/v1/search-criteria` — shared config
 ```json
-{ "id": "sc_1", "query_json": { "domains": ["greenhouse.io", "lever.co"], "roles": ["senior software engineer"], "keywords": ["Go", "Python"], "locations": ["remote"] }, "active": true }
+{
+  "ats_domain_allowlist": ["greenhouse.io", "lever.co", "myworkdayjobs.com"],
+  "exclusion_terms": ["staffing agency", "intern", "contract to hire"]
+}
 ```
 
 ### `PUT /api/v1/search-criteria`
-Same shape as request body; user-editable, not hardcoded (PRD §5.0.1).
+Same shape as the request body.
+
+### `GET /api/v1/search-profiles` — list this user's profiles (max 3)
+```json
+{
+  "data": [
+    {
+      "id": "sp_1",
+      "name": "AI Engineer track",
+      "role_titles": ["senior AI engineer", "AI/ML engineer"],
+      "title_scoped": true,
+      "skill_keywords": ["LLM", "LangChain", "Python"],
+      "locations": ["remote", "Bangalore"],
+      "compiled_query_text": "(site:greenhouse.io OR site:lever.co OR site:myworkdayjobs.com) intitle:(\"senior AI engineer\" OR \"AI/ML engineer\") (\"LLM\" OR \"LangChain\" OR \"Python\") (\"remote\" OR \"Bangalore\") -\"staffing agency\" -intern -\"contract to hire\"",
+      "compiled_at": "2026-08-08T09:00:00Z",
+      "active": true
+    }
+  ]
+}
+```
+Note the compiled query already includes the shared `ats_domain_allowlist`/`exclusion_terms` from §4's `search-criteria` — the frontend doesn't need to merge them client-side, the backend compiles the full string.
+
+### `POST /api/v1/search-profiles`
+Request: `{ name, role_titles, title_scoped, skill_keywords, locations }`. **409** if the user already has 3 active profiles (the cap, TDD §3.1.1) — surface this as a clear limit reached message, not a generic error.
+
+### `PUT /api/v1/search-profiles/:id` / `DELETE /api/v1/search-profiles/:id`
+Update or remove a profile. `PUT` recompiles and returns the updated `compiled_query_text` — show it to the user as confirmation of what will actually run, never a silent save.
+
+### `POST /api/v1/search-profiles/preview`
+Same body shape as `POST /search-profiles` (no `id` needed — this previews a profile that may not exist yet), **does not save**. For live-preview-as-you-type in the profile editor.
+```json
+// 200 Response
+{ "compiled_query_text": "...", "estimated_length_chars": 380, "within_length_limit": true }
+```
+`within_length_limit: false` means the compiler would drop lowest-priority terms to fit (TDD §3.1.1) — surface this in the UI, don't let the user discover it only after saving.
+
+### Application attribution
+`GET /api/v1/applications` and `GET /api/v1/applications/:id` (§2) now include `search_profile_id`/`search_profile_name` on `discovered`-source applications — render which track surfaced a given result (e.g., a small "via AI Engineer track" tag), not just that it was discovered.
 
 ---
 

@@ -62,20 +62,35 @@ None of this is unsolved because it's hard to build — every existing autofill/
 ## 5. Key Flows
 
 ### 5.0 Ingestion Flow (Daily, Automated)
-1. A scheduled cron job runs once a day (configurable) and calls the Google Search API with Rajeev's saved search query (ATS-domain filter + role/stack/location filters — see §5.0.1).
+1. A scheduled cron job runs once a day (configurable) and calls the Google Search API **once per active search profile** (§5.0.1) — a user with two profiles gets two searches, not one combined search.
 2. Results are filtered to the ATS domain allowlist (Greenhouse, Lever, Workday, iCIMS, Jobvite, Ashby, SmartRecruiters) and deduplicated against previously-seen URLs.
-3. Each new, unseen result is created as a `discovered` application and enters the same Apply Flow (§5.1) as if the user had pasted the URL — it still goes through scoring and the gate; discovery does **not** bypass the honesty/score gate.
+3. Each new, unseen result is created as a `discovered` application, tagged with the profile that found it, and enters the same Apply Flow (§5.1) as if the user had pasted the URL — it still goes through scoring and the gate; discovery does **not** bypass the honesty/score gate.
 4. User sees newly discovered roles land in their queue already scored, rather than having to find and paste links manually.
 
 This replaces relying on Google Alerts emails: same underlying search, but pulled on our own schedule via API rather than parsed out of an inbox — no Gmail API/OAuth scope needed, and results are structured JSON instead of parsed HTML email.
 
-**5.0.1 Search query** (Rajeev's current profile-matched query, stored as user-configurable search criteria, not hardcoded):
+**5.0.1 Search Query Builder — one query per named profile, not one combined query.** The query is **compiled from structured facets the user configures**, using the same Google search-operator vocabulary the [Google Hacking Database](https://www.exploit-db.com/google-hacking-database) catalogs, applied to job discovery instead of security recon — fully specified in `TDD.md` §3.1.1.
+
+**Why profiles, not one flat facet set**: a single combined role list and skill list means any role paired with any skill counts as a match — "senior backend engineer" AND "LangChain" would pass even though that's not a real target combination. Rajeev's actual search intent is really **two distinct tracks**, so it's configured as two profiles (max 3 allowed per user, TDD §3.1.1):
+
+**Profile 1 — "AI Engineer track"**:
 ```
 (site:myworkdayjobs.com OR site:greenhouse.io OR site:lever.co OR site:icims.com OR site:jobvite.com OR site:ashbyhq.com OR site:smartrecruiters.com)
-("senior AI engineer" OR "senior software engineer" OR "senior backend engineer" OR "AI/ML engineer" OR "senior Python developer" OR "senior Golang developer")
-("Python" OR "Golang" OR "LLM" OR "Generative AI" OR "LangChain" OR "Kubernetes" OR "AWS" OR "GCP")
-("Delhi NCR" OR "Delhi" OR "Gurugram" OR "Noida" OR "Bangalore" OR "Bengaluru" OR "Hyderabad" OR "remote" OR "work from home" OR "WFH")
+intitle:("senior AI engineer" OR "AI/ML engineer" OR "senior Python developer")
+("LLM" OR "Generative AI" OR "LangChain" OR "Python")
+("Delhi NCR" OR "Bangalore" OR "remote")
 ```
+
+**Profile 2 — "Backend Engineer track"**:
+```
+(site:myworkdayjobs.com OR site:greenhouse.io OR site:lever.co OR site:icims.com OR site:jobvite.com OR site:ashbyhq.com OR site:smartrecruiters.com)
+intitle:("senior software engineer" OR "senior backend engineer" OR "senior Golang developer")
+("Golang" OR "Kubernetes" OR "AWS" OR "GCP")
+("Delhi NCR" OR "Gurugram" OR "Noida" OR "remote")
+```
+
+Both profiles share the same ATS domain allowlist and exclusion set (`-"staffing agency" -intern -"contract to hire"`, TDD §3.1.1) — those aren't role-specific, so they're configured once, not per profile.
+The role facet now defaults to `intitle:`-scoped (higher precision — a JD's page title reliably contains the role name, a bare keyword match doesn't) and a default exclusion facet filters recruiter-agency/internship noise the original hand-typed query never addressed. The user can still see and edit the compiled string directly (never a black box), but builds it from facets by default rather than starting from a blank query.
 
 ### 5.1 Apply Flow (happy path)
 1. User submits a job URL (or pastes JD text) + selects their base profile/resume — either manually, or automatically via the Ingestion Flow above.
@@ -100,6 +115,7 @@ This replaces relying on Google Alerts emails: same underlying search, but pulle
 | # | Feature | Priority |
 |---|---|---|
 | 1 | JD ingestion — manual (URL/pasted text) + automated daily search-API cron for Greenhouse/Lever-class ATS | P0 |
+| 1a | Search Query Builder with named, multi-profile search (up to 3 per user) — per-profile role/skill/location facets, shared platform/exclusion config, compiled query with live preview before saving (TDD §3.1.1) | P1 |
 | 2 | JD-fit / resume-match scoring, shown before apply | P0 |
 | 3 | Resume tailoring + cover letter generation, retrieval-grounded (RAG) against the user's own profile — no invented experience | P0 |
 | 4 | Form auto-fill on target ATS | P0 |

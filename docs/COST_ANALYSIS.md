@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Draft v1 |
+| Status | Draft v2 — Search API costs updated for the multi-profile Search Query Builder fix (§2) |
 | Owner | Rajeev Ranjan |
 | Date | 2026-08-08 |
 | Scope | Extends `PERFORMANCE_SCALABILITY.md` §3 (LLM cost) and §9 (infra cost ballpark) into a full TCO — and closes two cost line items the GTM strategy named but the performance doc never actually modeled |
@@ -33,16 +33,16 @@ The CAPTCHA/proxy cost only applies once an application has cleared the score ga
 
 ## 2. Google Search API Overage
 
-The Ingestion Cron (PRD §5.0) runs one query per user per day. Google's Custom Search JSON API gives 100 free queries/day *per API project*, not per user — so unless each user is provisioned a separate API key (not currently designed, and impractical), all users share one project's quota.
+**Updated for the Search Query Builder's multi-profile fix** (`TDD.md` §3.1.1): the Ingestion Cron now runs **one query per active search profile**, not one query per user — a user with 2 profiles (like PRD §5.0.1's worked example) generates 2 queries/day, up to the 3-profile cap. Modeled here at an **average of 1.5 active profiles/user** (most users run 1–2 tracks; few will max out at 3). Google's Custom Search JSON API gives 100 free queries/day *per API project*, not per user — so unless each user is provisioned a separate API key (not currently designed, and impractical), all users share one project's quota, which now depletes faster than the earlier one-query-per-user model assumed.
 
-| Tier | Queries/day | Free-tier queries | Billable queries/day | Cost/day (~$5/1,000 queries, standard published rate) | Cost/month |
+| Tier | Avg queries/day (users × 1.5) | Free-tier queries | Billable queries/day | Cost/day (~$5/1,000 queries, standard published rate) | Cost/month |
 |---|---|---|---|---|---|
-| T0 (1 user) | 1 | 1 | 0 | $0 | $0 |
-| T1 (100 users) | 100 | 100 | 0 | $0 | $0 — exactly at the free-tier edge |
-| T2 (10,000 users) | 10,000 | 100 | 9,900 | $49.50 | ~$1,485 |
-| T3 (100,000 users) | 100,000 | 100 | 99,900 | $499.50 | ~$14,985 |
+| T0 (1 user) | 2 (Rajeev's own 2-profile setup) | 2 | 0 | $0 | $0 |
+| T1 (100 users) | 150 | 100 | 50 | $0.25 | ~$7.50 |
+| T2 (10,000 users) | 15,000 | 100 | 14,900 | $74.50 | ~$2,235 |
+| T3 (100,000 users) | 150,000 | 100 | 149,900 | $749.50 | ~$22,485 |
 
-**This is a real, previously-unpriced cost that becomes material at T2** — not large relative to LLM spend, but large enough to be worth a design note: at T1→T2, this is also the point where a single shared API project starts being an operational risk (one quota, one key, one point of failure for every user's discovery pipeline) independent of the dollar cost. Worth flagging as a T2 trigger alongside the ones already in `PERFORMANCE_SCALABILITY.md` §10.
+**This is a real, previously-unpriced cost that now becomes material at T1, not T2** — the multi-profile fix moved the free-tier exhaustion point earlier than the original single-query model assumed, which is exactly the kind of downstream cost effect a precision fix can have and is worth surfacing rather than letting the earlier (now-stale) "$0 at T1" claim stand uncorrected. Still small in absolute terms at T1, but the *trigger point* moved. At T1→T2, this remains also the point where a single shared API project starts being an operational risk (one quota, one key, one point of failure for every user's discovery pipeline) independent of the dollar cost — see `PERFORMANCE_SCALABILITY.md` §10.
 
 ## 3. Full TCO by Tier
 
@@ -51,9 +51,9 @@ Combining `PERFORMANCE_SCALABILITY.md` §3 (LLM) and §9 (infra), plus the two a
 | Tier | LLM | Infra (illustrative) | CAPTCHA/proxy | Search API overage | **Total/month** |
 |---|---|---|---|---|---|
 | T0 | ~$3.60 | ~$50–100 | ~$0.16 | $0 | **~$55–105** |
-| T1 | ~$360 | ~$300–600 | ~$16 | $0 | **~$675–975** |
-| T2 | ~$36,000 | ~$3,000–6,000 | ~$1,620 | ~$1,485 | **~$42,000–45,000** |
-| T3 | ~$360,000 | ~$25,000–50,000 | ~$16,200 | ~$14,985 | **~$416,000–441,000** |
+| T1 | ~$360 | ~$300–600 | ~$16 | ~$7.50 | **~$684–984** |
+| T2 | ~$36,000 | ~$3,000–6,000 | ~$1,620 | ~$2,235 | **~$42,855–45,855** |
+| T3 | ~$360,000 | ~$25,000–50,000 | ~$16,200 | ~$22,485 | **~$423,685–448,685** |
 
 At every tier, **LLM cost remains the dominant line item** (80–86% of total at T2/T3) — this doesn't change the priority call already made in `PERFORMANCE_SCALABILITY.md` §11 (optimize LLM spend via caching/batching before infra), it reinforces it with the fuller picture.
 
@@ -62,13 +62,13 @@ At every tier, **LLM cost remains the dominant line item** (80–86% of total at
 | Tier | Total/month | Active users | Fully-loaded cost/user/month |
 |---|---|---|---|
 | T0 | ~$80 | 1 | n/a (fixed-cost solo build) |
-| T1 | ~$825 | 100 | ~$8.25 |
-| T2 | ~$43,500 | 10,000 | ~$4.35 |
-| T3 | ~$428,500 | 100,000 | ~$4.29 |
+| T1 | ~$834 | 100 | ~$8.34 |
+| T2 | ~$44,355 | 10,000 | ~$4.44 |
+| T3 | ~$436,185 | 100,000 | ~$4.36 |
 
-Cost per user **drops and then flattens** from T1 to T2/T3 — the fixed infra floor (§9's baseline instance costs) dominates at T1's small denominator, while variable costs (LLM, proxy, search) that scale linearly with usage dominate at T2/T3, so the per-user figure converges rather than continuing to fall. Don't expect economy-of-scale cost reduction much below ~$4.30/user/month with this architecture as designed — further reduction would have to come from the LLM-cost-reduction levers (`PERFORMANCE_SCALABILITY.md` §3: caching, batching, or a cheaper model for the scoring pass specifically) rather than from infra consolidation.
+Cost per user **drops and then flattens** from T1 to T2/T3 — the fixed infra floor (§9's baseline instance costs) dominates at T1's small denominator, while variable costs (LLM, proxy, search) that scale linearly with usage dominate at T2/T3, so the per-user figure converges rather than continuing to fall. Don't expect economy-of-scale cost reduction much below ~$4.35/user/month with this architecture as designed — further reduction would have to come from the LLM-cost-reduction levers (`PERFORMANCE_SCALABILITY.md` §3: caching, batching, or a cheaper model for the scoring pass specifically) rather than from infra consolidation.
 
-**Framing against the GTM strategy**: the GTM doc's category comparison (§1) notes competitors pricing below $10/month, and envisions the eventual Phase 3 recruiter product at "$500/month or a placement fee" (§0.1) — not a consumer subscription. At ~$4.30/user/month fully loaded, a consumer subscription anywhere in the $10–15/month range (matching the competitive category) would clear a healthy margin at T2+ scale, *if* Phase 1's honest-scoring/RAG/eval investment doesn't change the unit cost materially as it matures — which the numbers here suggest it won't, since LLM and proxy costs (not the MLOps/eval overhead) dominate the total. This is a genuinely useful data point for the eventual monetization conversation the GTM doc defers past Phase 1 (GTM §5) — Phase 1 doesn't need to answer pricing, but it's worth knowing the unit economics support a normal SaaS subscription, not just the B2B recruiter model.
+**Framing against the GTM strategy**: the GTM doc's category comparison (§1) notes competitors pricing below $10/month, and envisions the eventual Phase 3 recruiter product at "$500/month or a placement fee" (§0.1) — not a consumer subscription. At ~$4.35–4.40/user/month fully loaded, a consumer subscription anywhere in the $10–15/month range (matching the competitive category) would clear a healthy margin at T2+ scale, *if* Phase 1's honest-scoring/RAG/eval investment doesn't change the unit cost materially as it matures — which the numbers here suggest it won't, since LLM and proxy costs (not the MLOps/eval overhead) dominate the total. This is a genuinely useful data point for the eventual monetization conversation the GTM doc defers past Phase 1 (GTM §5) — Phase 1 doesn't need to answer pricing, but it's worth knowing the unit economics support a normal SaaS subscription, not just the B2B recruiter model.
 
 ## 5. Design Fix: Cost Circuit Breaker Default Cap
 

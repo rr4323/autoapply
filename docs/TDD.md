@@ -155,9 +155,49 @@ This mirrors a common production pattern: a thin, boring, reliable control-plane
 
 ### 3.1 Go Control Plane
 - **API** — REST surface for the React frontend (§9); auth, profile CRUD, application history.
-- **Ingestion Cron** — daily job calling the Google Custom Search JSON API with the user's stored query, filtering to the ATS domain allowlist, deduplicating against `discovered_urls`, and publishing a `jd.discovered` message per new posting. (Unchanged from the prior design — see PRD §5.0.)
+- **Ingestion Cron** — daily job calling the Google Custom Search JSON API **once per active search profile** (§3.1.1 — not once per user; a user with two profiles gets two queries), filtering each result set to the ATS domain allowlist, deduplicating against `discovered_urls`, and publishing a `jd.discovered` message per new posting.
 - **Eval/Drift Cron** — nightly trigger (new, §11) that kicks off the Drift Monitor Agent's evaluation pass; kept as a thin Go scheduler for the same reason the Ingestion Cron is Go — scheduling is control-plane concern, the statistical work it triggers is not.
 - **Policy Engine** (formalized as its own component, not inline logic — see §7) — the only writer allowed to authorize a `generate`, `submit`, or `require_review` decision. Subscribes to `application.scored` and to the Verifier Agent's pre-submit check; every other agent must wait for a `policy.decision` message before proceeding.
+
+**3.1.1 Search Query Builder** — the Ingestion Cron's query was originally a single hand-written string (earlier PRD §5.0.1). It's now **compiled from structured facets** rather than stored as opaque text, using the same Google search-operator vocabulary the [Google Hacking Database](https://www.exploit-db.com/google-hacking-database) catalogs for precision search — the same operators (`site:`, `intitle:`, quoted exact-phrase, `OR`, `-`exclusion) doing the same job here — narrowing a broad search into a precise one — as they do for security reconnaissance, just pointed at job discovery instead.
+
+**Search profiles, not one flat facet set (fixes the cross-pollination gap).** A single flat facet set means any role term paired with any skill term counts as a match — "senior backend engineer" AND "LangChain" would pass even if that pairing was never intended. The fix: a user configures **one or more named search profiles** (e.g., "AI Engineer track", "Backend Engineer track"), each with its own independent role/skill/location facets. Two profiles compile to two separate queries and run as two separate Ingestion Cron calls — trading Search API quota (`COST_ANALYSIS.md` §2, updated for this) for the precision a single flat query structurally can't give.
+
+**What's per-profile vs. shared** — not everything needed duplicating:
+
+| Scope | Fields | Why |
+|---|---|---|
+| **Per-profile** (`search_profiles`, §8) | `name`, `role_titles[]`, `title_scoped`, `skill_keywords[]`, `locations[]` | These are exactly the facets whose *pairing* matters — a role and its associated skills belong to the same track, so they live together |
+| **Shared across all profiles** (`search_criteria`, §8, now one row per user) | `ats_domain_allowlist[]`, `exclusion_terms[]` | Which platforms to search and what to filter out (recruiter-agency spam, internships) don't vary by role track — forcing a user to re-enter the same exclusion list per profile would be pure friction with no precision benefit |
+
+**Per-profile facets and the operators behind them**, each internally OR'd, then AND'd across facets by juxtaposition — same structure as the original single query, just scoped to one profile:
+
+| Facet | Scope | Operator | Example |
+|---|---|---|---|
+| Platform | Shared | `site:` | `(site:greenhouse.io OR site:lever.co OR ...)` |
+| Role | Per-profile | quoted phrase, `intitle:`-scoped by default | `intitle:("senior AI engineer" OR "AI/ML engineer" OR ...)` |
+| Skills/stack | Per-profile | quoted phrase | `("LangChain" OR "LLM" OR "Generative AI" OR ...)` |
+| Location | Per-profile | quoted phrase | `("remote" OR "Bangalore" OR ...)` |
+| Exclusions | Shared | `-term` / `-"phrase"` | `-"staffing agency" -intern -"contract to hire"` — suggested default, user-editable |
+
+**Profile cap**: max **3 active profiles per user** in Phase 1 — a sane bound on quota cost (each profile is a full daily query) rather than an arbitrary number; most job searches genuinely target 2–3 distinct role tracks, not more. This is also a natural future lever for `MULTI_TENANCY_AND_PRICING.md`'s plan tiers (e.g., free tier = 1 profile) — noted as a connection point, not designed here, since pricing is explicitly out of Phase 1 scope.
+
+**Discovery attribution**: every `discovered` application records which `search_profile_id` produced it (§8) — lets the user (and eventually the product) see which track is actually surfacing good matches, not just that discovery happened.
+
+**Operators evaluated and deliberately not used**: `filetype:` — job postings are HTML pages, not documents, so this operator has no target here; `*` wildcard — considered for partial-title matching, rejected for V1 as too imprecise (risks matching unrelated titles), left as an open question (§17) rather than silently dropped. Naming what was rejected and why is worth doing explicitly — a reader shouldn't have to wonder whether the full GHDB operator set was actually considered.
+
+**Why `intitle:` by default, not a bare keyword match**: a JD page's `<title>` reliably contains the role name; a bare keyword match can false-positive on a page that merely *mentions* a role in body text (a "similar jobs" sidebar, a careers-page FAQ). Same "narrow the surface deliberately" instinct as the ATS domain allowlist itself.
+
+**Operators evaluated and deliberately not used**: `filetype:` — job postings are HTML pages, not documents, so this operator has no target here; `*` wildcard — considered for partial-title matching within a profile, rejected for V1 as too imprecise, left as an open question (§17).
+
+**Why `intitle:` by default, not a bare keyword match**: a JD page's `<title>` reliably contains the role name; a bare keyword match can false-positive on a page that merely *mentions* a role in body text (a "similar jobs" sidebar, a careers-page FAQ). Same "narrow the surface deliberately" instinct as the ATS domain allowlist itself.
+
+**Compilation**: a pure function — no LLM call, no external dependency, deliberately boring, matching the Go control plane's role everywhere else in this design — runs per profile, on two triggers: (1) immediately on `PUT /api/v1/search-profiles/:id`, so the user sees the exact compiled string *before* saving, never a black box (same transparency instinct as the score breakdown, TDD §6.4), and (2) fresh at each Ingestion Cron run per active profile rather than trusting a possibly-stale cache.
+
+**Constraints**:
+- **Query length**: the Google Custom Search JSON API has a practical query-length ceiling per query — now a per-profile concern, not a whole-user one, and if anything easier to stay under since each profile's facets are narrower than the old single combined set. The compiler validates length before submission and drops lowest-priority terms first (less-specific skill terms) rather than silently submitting something that doesn't do what the user configured.
+- **Term escaping**: user-supplied facet terms are escaped/quoted before compilation so a crafted term can't inject an unintended operator (e.g., an extra `site:` that appears to widen domain scope). This is a correctness safeguard, not the actual security boundary — even if a malformed term slipped through, the Scraper Agent's URL/domain validation (§14.2) is what actually gates which domains get fetched. Defense-in-depth on top of an already-enforced boundary, not the only thing standing between a bad facet and a bad fetch.
+- **Quota multiplies with profile count**: each active profile is a full daily Search API call — a user running the max 3 profiles costs 3× the quota of one. `COST_ANALYSIS.md` §2 is updated to price this at a realistic average profiles-per-user rather than assuming one query per user.
 
 ### 3.2 Python Agent Fleet
 Each agent below is a **separate consumer process**, subscribed to exactly one input topic and publishing to exactly one output topic (§4). None of them call each other directly or share in-process state — anything they need from a previous stage comes from the message payload or from the memory hierarchy (§5).
@@ -285,6 +325,7 @@ profile_chunks(id, user_id, source_section, text, embedding vector(d), created_a
 -- episodic memory
 applications(
   id, user_id, jd_url, jd_text, company, role_title, source,   -- manual | discovered
+  search_profile_id,   -- nullable (null for manual); which search profile discovered this, §3.1.1
   jd_fit_score, resume_match_score, score_breakdown_json, scoring_model_version,
   status,   -- pending | scored | below_threshold | filling | ready_for_review | needs_input | submitted | failed
   bot_check_detected, submitted_at, created_at, updated_at
@@ -292,9 +333,22 @@ applications(
 application_events(id, application_id, event_type, produced_by_agent, payload_json, created_at)  -- append-only; also the idempotency ledger (§4.2)
 application_outcomes(id, application_id, outcome, updated_at)  -- user-supplied: interview | rejected | no_response
 
--- ingestion
-search_criteria(id, user_id, query_json, ats_domain_allowlist[], active, created_at)
-discovered_urls(id, user_id, url, first_seen_at, application_id)  -- unique(user_id, url)
+-- ingestion (§3.1.1): search_criteria is shared config (one row/user), search_profiles is per-track (many rows/user)
+search_criteria(
+  id, user_id,
+  ats_domain_allowlist[],
+  exclusion_terms[],
+  created_at, updated_at
+)
+search_profiles(
+  id, user_id, name,                  -- e.g. "AI Engineer track", "Backend Engineer track"
+  role_titles[], title_scoped,        -- title_scoped: whether role terms are intitle:-wrapped
+  skill_keywords[],
+  locations[],
+  compiled_query_text, compiled_at,   -- last compiled output, for preview/audit — never trust a stale copy at cron time
+  active, created_at, updated_at
+)                                      -- max 3 active per user, enforced at the API layer
+discovered_urls(id, user_id, search_profile_id, url, first_seen_at, application_id)  -- unique(user_id, url)
 
 -- RAG output / traceability
 generated_documents(id, application_id, type, storage_ref, source_chunk_ids[], groundedness_score, created_at)  -- type: resume | cover_letter | screener_answer
@@ -535,6 +589,7 @@ The four sections below were added after `SECURITY_ANALYSIS.md` walked the archi
 - Evaluation harness (§10.2/§10.3) is designed with a schema and metrics but the golden dataset itself doesn't exist yet — needs to be hand-curated before the harness produces real numbers, and before the Drift Monitor has anything meaningful to compare against a baseline.
 - The Scoring calibration model (§11.3) has no real training data at Phase 1 launch — with one user and no outcome history yet, it runs as the fixed heuristic weighting, not a trained model; the retraining pipeline is built and wired but has nothing to train on until `application_outcomes` accumulates enough labeled rows. This is the same cold-start limitation already flagged in PRD §10, now made concrete at the component level.
 - Drift thresholds (§11.2) are initial guesses (e.g., "MAE exceeds X"), not yet tuned against real variance — early on this risks either false alarms or missed drift until enough eval runs establish what normal noise looks like.
+- Search profiles (§3.1.1) are a schema and API design, not running code — the `search_criteria`/`search_profiles` split, the 3-profile cap, and the per-profile Ingestion Cron fan-out all need building; migrating any already-configured single-profile data (there is none yet at Phase 1, so this is a non-issue today but worth remembering if a single-profile version ever ships first).
 - Monitoring stack (§11.1) is designed (metrics, dashboards, tracing) but not yet deployed/instrumented in running code; self-hosted Langfuse specifically isn't stood up yet (Phase 1 needs to pick and operate its deployment — Docker Compose is enough at this scale, but it's another service to run).
 - LangGraph's checkpointer is designed to point at the same Redis store as working memory (§3.2.1), but that integration (custom checkpoint saver against our own key scheme, rather than a stock Redis checkpointer) isn't built yet.
 - Ragas/DeepEval both expect their own dataset object shapes; the conversion from our `eval_runs`/golden-dataset schema (§8) into those formats is a real adapter to write, not just a config change.
@@ -565,3 +620,5 @@ Every item below was open as of the prior revision. Kept as a decision log rathe
 **Genuinely still open, no resolution attempted this pass:**
 - Exact CAPTCHA/proxy vendor and a real quote (needs a sales conversation, not a design decision).
 - Whether the 150/30-per-class threshold (§11.3) and the 0.7 faithfulness threshold (§10.3) are the *right* numbers — both are principled starting points, not validated against real data, since no golden dataset or outcome history exists yet (§16).
+- ~~Multiple named search profiles per user~~ — **resolved**, §3.1.1 now specifies per-profile facets + a 3-profile cap. Whether **3** is the right cap number is itself unvalidated (a reasonable starting guess, not tested against real usage) — that's the part still genuinely open.
+- Whether `*` wildcard title matching (§3.1.1) is ever worth adding despite the imprecision risk — e.g., scoped narrowly to catch title variants a fixed OR-list misses ("Sr. Backend Engineer" vs. "Senior Backend Engineer").
