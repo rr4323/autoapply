@@ -1,0 +1,36 @@
+[project]
+name = "agentos-agents"
+version = "0.1.0"
+description = "AgentOS Python agent fleet — TDD.md §3.2: Scraper, Retriever, Scoring, Generator, Filler, Verifier, Drift Monitor, Trainer"
+readme = "README.md"
+authors = [
+    { name = "Rajeev Ranjan", email = "rajeev.ranjan@opstree.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.13.4",
+    "redis>=8.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "fakeredis>=2.37.0",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

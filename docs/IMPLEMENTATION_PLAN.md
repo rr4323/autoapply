@@ -35,6 +35,8 @@ Tests are written **alongside** each milestone, not after it — a milestone isn
 
 Milestones deliver vertical slices (one working piece of the pipeline), not horizontal layers (not "all models, then all handlers") — each milestone should be independently demoable via a script or a couple of curl/CLI calls before the next one starts.
 
+**Step-level breakdown**: `BACKEND_BUILD_STEPS.md` expands the M0–M10 table below into ~70 small steps sized for individual review, in strict build order, with each step's tests attached. That document is the day-to-day build order; this table stays the milestone-level view.
+
 | # | Milestone | Unit tests | Integration tests |
 |---|---|---|---|
 | M0 **[EARLIEST DEMOABLE]** | Infra scaffolding: Postgres, Redis, Docker Compose for local dev; Go service skeleton; Python worker skeleton; Redis Streams client wiring on both sides | — (infra) | Basic pub/sub round-trip: publish to a test topic, assert a consumer receives it |

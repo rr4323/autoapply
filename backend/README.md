@@ -11,6 +11,8 @@ Both talk only through the message bus (Redis Streams, `TDD.md` §4) — no agen
 
 Follow `../docs/IMPLEMENTATION_PLAN.md` §1 (Backend Implementation Plan) — milestones M0–M10, each with unit and integration tests specified before you write the milestone's code, not after.
 
+For the actual build order, `../docs/BACKEND_BUILD_STEPS.md` breaks those milestones into ~70 small, individually reviewable steps (Phase A–L), each with the tests that ship alongside it. Start at its Step 0 — the library choices every later step assumes.
+
 ## API contract
 
 The REST surface `api/` implements is fully specified in:
