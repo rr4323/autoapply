@@ -1,0 +1,107 @@
+<!--
+  Local ATS fixture — the "CAPTCHA-gated" variant (docs/BACKEND_BUILD_STEPS.md
+  Step 39). Identical form to ../clean/index.html, plus the bot-check
+  signals TDD.md §7.4 names explicitly, so Step 42's detector has a real
+  DOM to test against for each one: a known CAPTCHA vendor script + iframe,
+  a data-sitekey attribute, and a honeypot field. This is the required
+  demo edge case (PRD/IMPLEMENTATION_PLAN.md's "CAPTCHA fixture ->
+  ready_for_review") — a fixture, not a real CAPTCHA (the vendor script
+  points nowhere reachable; the point is DOM shape, not a working
+  challenge). Also carries the same JD content section as ../clean/index.html
+  (see that file's comment for why the JD and the form live on one page).
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Senior Backend Engineer - Acme Corp</title>
+  <!-- known CAPTCHA vendor script (§7.4 signal 1) -->
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+</head>
+<body>
+<div id="header">
+  <h1 class="app-title">Senior Backend Engineer</h1>
+  <span class="company-name">Acme Corp</span>
+</div>
+<div id="content">
+  <div id="job-description">
+    <p>We are looking for a Senior Backend Engineer to join our platform team.</p>
+    <p>You will design and build scalable services powering our core product.</p>
+    <p><strong>Requirements</strong></p>
+    <ul>
+      <li>5+ years of experience with Go or a similar statically-typed language</li>
+      <li>Strong understanding of distributed systems</li>
+      <li>Experience with PostgreSQL and Redis</li>
+    </ul>
+    <p><strong>Responsibilities</strong></p>
+    <ul>
+      <li>Design and implement backend services</li>
+      <li>Own the on-call rotation for your team's services</li>
+      <li>Mentor junior engineers</li>
+    </ul>
+  </div>
+</div>
+
+<form id="application_form" action="/captcha/submit" method="post">
+  <ul>
+    <li class="field">
+      <label for="first_name">First Name</label>
+      <input type="text" id="first_name" name="first_name" required />
+    </li>
+    <li class="field">
+      <label for="last_name">Last Name</label>
+      <input type="text" id="last_name" name="last_name" required />
+    </li>
+    <li class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required />
+    </li>
+    <li class="field">
+      <label for="phone">Phone</label>
+      <input type="tel" id="phone" name="phone" />
+    </li>
+    <li class="field">
+      <label for="resume">Resume</label>
+      <input type="file" id="resume" name="resume" />
+    </li>
+    <li class="field">
+      <label for="cover_letter">Cover Letter</label>
+      <textarea id="cover_letter" name="cover_letter"></textarea>
+    </li>
+    <li class="field">
+      <label for="q_why">Why are you interested in this role?</label>
+      <textarea id="q_why" name="q_why"></textarea>
+    </li>
+    <li class="field">
+      <label for="q_years">How many years of experience do you have with Go?</label>
+      <input type="number" id="q_years" name="q_years" />
+    </li>
+    <li class="field">
+      <label for="q_auth">Are you legally authorized to work in the country of this job?</label>
+      <select id="q_auth" name="q_auth">
+        <option value=""></option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </li>
+
+    <!-- honeypot field (§7.4 signal 3): hidden from real users via CSS,
+         a bot filling every field it can see will fill this one too -->
+    <li class="field" style="display:none" aria-hidden="true">
+      <label for="fax_number">Fax Number</label>
+      <input type="text" id="fax_number" name="fax_number" tabindex="-1" autocomplete="off" />
+    </li>
+  </ul>
+
+  <!-- data-sitekey + vendor iframe (§7.4 signals 1 and 2) -->
+  <div class="g-recaptcha" data-sitekey="fixture-sitekey-not-a-real-key"></div>
+  <iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/api2/anchor?fixture=1"></iframe>
+
+  <!-- type="button", not "submit" — see clean/index.html's identical
+       comment (Step 43); this variant should never actually be clicked
+       by the Verifier Agent, which the integration test asserts. -->
+  <button type="button" id="submit_app" onclick="document.body.setAttribute('data-submitted', 'true')">
+    Submit Application
+  </button>
+</form>
+</body>
+</html>

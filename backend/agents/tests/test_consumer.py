@@ -80,7 +80,7 @@ async def test_idempotency_hook_skips_handle(redis_client):
     await redis_client.xadd("test.topic", {"job_id": "3"})
 
     class AlwaysDuplicateConsumer(EchoConsumer):
-        def is_duplicate(self, entry_id: str, fields: dict[str, Any]) -> bool:
+        async def is_duplicate(self, entry_id: str, fields: dict[str, Any]) -> bool:
             return True
 
     consumer = AlwaysDuplicateConsumer(redis_client, "test.topic", "test-group", "c1", block_ms=100)

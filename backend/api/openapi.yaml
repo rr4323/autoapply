@@ -551,11 +551,20 @@ components:
             jd_url: { type: string, nullable: true }
             score_breakdown:
               type: object
+              nullable: true
+              description: Null until the Scoring Agent has scored this application.
               properties:
-                deterministic_keyword_overlap: { type: number }
-                llm_semantic_score: { type: number }
-                final_score: { type: integer }
-                reasons: { type: array, items: { type: string } }
+                score: { type: integer }
+                scoring_model_version: { type: string }
+                signals:
+                  type: object
+                  description: "Keyed by signal name: keyword_overlap, retrieval_relevance, llm_semantic."
+                  additionalProperties:
+                    type: object
+                    properties:
+                      value: { type: number }
+                      weight: { type: number }
+                      contribution: { type: number }
             retrieved_evidence:
               type: array
               items:

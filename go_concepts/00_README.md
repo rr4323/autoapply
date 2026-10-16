@@ -17,7 +17,7 @@ This directory is a personal Go reference, one file per concept, built up **just
 | 4 | [04_interfaces.md](04_interfaces.md) | structural typing, small-interface idiom | Step 3 |
 | 5 | [05_error_handling.md](05_error_handling.md) | multiple return values, `if err != nil` | Step 1 |
 | 6 | [06_nethttp_basics.md](06_nethttp_basics.md) | `http.Handler`, `HandleFunc`, request/response shape | Step 3 |
-| 7 | [07_context.md](07_context.md) | `context.Context`, timeouts, cancellation | Step 3 |
+| 7 | [07_context.md](07_context.md) | `context.Context` — timeouts, OS-signal cancellation, request-scoped values (`WithValue`) | Step 3 / 14 |
 | 8 | [08_testable_interfaces.md](08_testable_interfaces.md) | "accept interfaces, return structs" — the `Pinger` pattern | Step 3 |
 | 9 | [09_build_run_test.md](09_build_run_test.md) | `go run` vs `go build` vs `go test` vs `go install` | Step 1 |
 | 10 | [10_testing_http_handlers.md](10_testing_http_handlers.md) | `httptest.NewRecorder`/`NewRequestWithContext` — testing handlers without a real server | Step 3 |
@@ -27,6 +27,17 @@ This directory is a personal Go reference, one file per concept, built up **just
 | 14 | [14_build_tags.md](14_build_tags.md) | `//go:build` — excluding integration tests from the default build | Step 7 |
 | 15 | [15_testcontainers.md](15_testcontainers.md) | `testcontainers-go` — real Docker containers for integration tests | Step 7 |
 | 16 | [16_exec_command.md](16_exec_command.md) | `os/exec` — launching and verifying a subprocess (across languages) | Step 7 |
+| 17 | [17_sqlc_codegen.md](17_sqlc_codegen.md) | `sqlc` — type-safe Go generated from real SQL, no ORM | Step 13 |
+| 18 | [18_constant_time_comparison.md](18_constant_time_comparison.md) | `crypto/subtle` — comparing secrets without a timing leak | Step 14 |
+| 19 | [19_closures_and_middleware.md](19_closures_and_middleware.md) | closures — the config → wrap → execute middleware-factory pattern | Step 14 |
+| 20 | [20_embedded_structs_json.md](20_embedded_structs_json.md) | embedded struct fields flatten in JSON — Go's answer to OpenAPI `allOf` | Step 15 |
+| 21 | [21_pgx_custom_enum_arrays.md](21_pgx_custom_enum_arrays.md) | a real bug: `pgx` can't encode `[]CustomEnumType` — cast to `text[]` instead | Step 15 |
+| 22 | [22_pgx_transactions_and_sqlc_withtx.md](22_pgx_transactions_and_sqlc_withtx.md) | `pgx.Tx` + sqlc's `WithTx` — and why "same transaction" can't extend to Redis | Step 17 |
+| 23 | [23_yaml_config_loading.md](23_yaml_config_loading.md) | `gopkg.in/yaml.v3`, the wrapper-struct trick for a nested top-level key, `*float64` for a YAML `null` | Step 31 |
+| 24 | [24_go_side_stream_consumer.md](24_go_side_stream_consumer.md) | A Go-side Redis Streams consumer — `context.Context` cancellation instead of `asyncio.Event`, error-return instead of exception for "don't ack on failure" | Step 32 |
+| 25 | [25_password_hashing_bcrypt.md](25_password_hashing_bcrypt.md) | `bcrypt` — salted, deliberately-slow password hashing, `CompareHashAndPassword` vs. `==` | SaaS pivot P1 |
+| 26 | [26_jwt_tokens.md](26_jwt_tokens.md) | JWTs — claims, HMAC signing, `ParseWithClaims`'s algorithm-pinning callback | SaaS pivot P1 |
+| 27 | [27_errors_as_typed_extraction.md](27_errors_as_typed_extraction.md) | `errors.As` — recovering a concrete typed error (e.g. `*pgconn.PgError`) out of a wrapped chain | SaaS pivot P1 |
 
 ## Where each concept actually lands in AgentOS
 

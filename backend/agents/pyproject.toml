@@ -8,6 +8,12 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "asyncpg>=0.31.0",
+    "beautifulsoup4>=4.15.0",
+    "httpx>=0.28.1",
+    "lxml>=6.1.1",
+    "minio>=7.2.20",
+    "playwright>=1.62.0",
     "pydantic>=2.13.4",
     "redis>=8.1.0",
 ]
@@ -17,7 +23,9 @@ dev = [
     "fakeredis>=2.37.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "respx>=0.23.1",
     "ruff>=0.7",
+    "testcontainers[postgres]>=4.15.0",
 ]
 
 [build-system]
@@ -27,6 +35,10 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: requires Docker (Postgres/Redis testcontainers)",
+    "e2e: requires the full docker-compose stack already running (`make up`)",
+]
 
 [tool.ruff]
 line-length = 100

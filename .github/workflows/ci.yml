@@ -35,6 +35,14 @@ jobs:
       - name: Unit tests (Go + Python)
         run: make test
 
+      # docs/BACKEND_BUILD_STEPS.md Step 41 — the Filler Agent's
+      # integration tests drive a real headless Chromium against the
+      # ats-fixtures forms. --with-deps needs the runner's sudo access
+      # this CI environment has (unlike some sandboxed dev environments).
+      - name: Install Playwright browser
+        working-directory: backend/agents
+        run: uv run playwright install --with-deps chromium
+
       # docs/BACKEND_BUILD_STEPS.md Step 7 / M0 exit — real Docker Redis
       # container + a real Python subprocess, not mocks on either side.
       # ubuntu-latest ships Docker pre-installed, same as local dev.

@@ -40,12 +40,14 @@ class Consumer(ABC):
     async def handle(self, entry_id: str, fields: dict[str, Any]) -> None:
         """Process one message. Subclasses implement business logic here."""
 
-    def is_duplicate(self, entry_id: str, fields: dict[str, Any]) -> bool:
-        """Idempotency hook — stubbed.
+    async def is_duplicate(self, entry_id: str, fields: dict[str, Any]) -> bool:
+        """Idempotency hook — stubbed by default.
 
         TDD.md §4.2: a real check against application_events (keyed on
-        job_id + event_type) lands in a later build step. Until then this
-        always returns False — every delivered message is processed.
+        job_id + event_type) is async (it's a DB query), which is why this
+        hook is async even though the stub itself does no I/O. See
+        agentos_agents.common.idempotency.ApplicationEventsIdempotency for
+        the real implementation, used by ScraperConsumer onward.
         """
         return False
 
@@ -67,7 +69,7 @@ class Consumer(ABC):
             await self._process(entry_id, fields)
 
     async def _process(self, entry_id: str, fields: dict[str, Any]) -> None:
-        if not self.is_duplicate(entry_id, fields):
+        if not await self.is_duplicate(entry_id, fields):
             await self.handle(entry_id, fields)
         await self.redis.xack(self.topic, self.group, entry_id)
 

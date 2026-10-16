@@ -42,6 +42,87 @@ services:
       timeout: 5s
       retries: 10
 
+  # Local ATS fixture forms (docs/BACKEND_BUILD_STEPS.md Step 39) — the
+  # Filler/Verifier Agents (Steps 41/43) fill and submit against these
+  # instead of a live ATS site. nginx's default static-file serving needs
+  # no custom config: ./ats-fixtures/clean/index.html and
+  # ./ats-fixtures/captcha/index.html become /clean/ and /captcha/.
+  ats-fixtures:
+    image: nginx:alpine
+    volumes:
+      - ./ats-fixtures:/usr/share/nginx/html:ro
+    ports:
+      - "8082:80"
+    # Aliased as a real Greenhouse hostname on the compose network only
+    # (docs/BACKEND_BUILD_STEPS.md Step 45) — the Scraper Agent's ATS
+    # dispatch (parser.py/screener.py) and its §14.2 allowlist both key
+    # off the hostname containing "greenhouse.io"; this makes the local
+    # fixture genuinely satisfy that check instead of needing either one
+    # loosened for demo purposes. From the host machine this container is
+    # still reachable at localhost:8082, unaffected by the alias.
+    networks:
+      default:
+        aliases:
+          - boards.greenhouse.io
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/clean/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Go control plane (docs/BACKEND_BUILD_STEPS.md Step 45).
+  api:
+    build:
+      context: ./backend/api
+    environment:
+      DATABASE_URL: postgres://agentos:agentos_dev@postgres:5432/agentos?sslmode=disable
+      REDIS_ADDR: redis:6379
+      INTERNAL_SHARED_SECRET: dev-internal-secret
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Python agent fleet — every consumer (Scraper, Retriever, Scoring,
+  # Generator, Filler+Verifier) in one process (agentos_agents/worker.py).
+  # SCRAPER_ALLOW_INSECURE_LOCAL_TARGETS relaxes §14.2's https-only and
+  # private-IP checks specifically for this local demo network — see
+  # scraper/url_validator.py's allow_insecure_local_targets docstring for
+  # why that's a named, off-by-default parameter and not a change to the
+  # security check itself. No ANTHROPIC_API_KEY/OPENAI_API_KEY is set, so
+  # this runs with agentos_agents.demo_clients' deterministic fakes.
+  agent-worker:
+    build:
+      context: ./backend/agents
+    environment:
+      DATABASE_URL: postgresql://agentos:agentos_dev@postgres:5432/agentos?sslmode=disable
+      REDIS_ADDR: redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: agentos
+      MINIO_SECRET_KEY: agentos_dev_pw
+      INTERNAL_API_BASE_URL: http://api:8080
+      INTERNAL_SHARED_SECRET: dev-internal-secret
+      SCRAPER_ALLOW_INSECURE_LOCAL_TARGETS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      ats-fixtures:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   minio_data:

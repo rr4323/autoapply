@@ -1,0 +1,67 @@
+<!--
+  Simplified, representative fixture — NOT scraped from a live Greenhouse
+  page (no network access in this environment to verify against the real
+  DOM). Structure follows Greenhouse's documented public CSS conventions
+  (h1.app-title, .company-name, #content) closely enough for the parser
+  to be meaningfully tested, but hasn't been validated against a real
+  live page. TDD.md §16 already flags this exact limitation: "the first
+  fill on any new domain still depends on LLM-assisted DOM analysis,
+  which can fail on unusual layouts" — this fixture doesn't remove that
+  risk, it just gives the parser something concrete to run against.
+-->
+<!DOCTYPE html>
+<html>
+<head><title>Senior Backend Engineer - Acme Corp</title></head>
+<body>
+<div id="header">
+  <h1 class="app-title">Senior Backend Engineer</h1>
+  <span class="company-name">Acme Corp</span>
+</div>
+<div id="content">
+  <div id="job-description">
+    <p>We are looking for a Senior Backend Engineer to join our platform team.</p>
+    <p>You will design and build scalable services powering our core product.</p>
+    <p><strong>Requirements</strong></p>
+    <ul>
+      <li>5+ years of experience with Go or a similar statically-typed language</li>
+      <li>Strong understanding of distributed systems</li>
+      <li>Experience with PostgreSQL and Redis</li>
+    </ul>
+    <p><strong>Responsibilities</strong></p>
+    <ul>
+      <li>Design and implement backend services</li>
+      <li>Own the on-call rotation for your team's services</li>
+      <li>Mentor junior engineers</li>
+    </ul>
+  </div>
+</div>
+<!--
+  Application-questions section added for Step 20 (screener-question
+  extraction + field-type inference, TDD.md §6.5). Real Greenhouse
+  application forms render custom questions as <li class="field"> entries
+  inside #application_form, each with a <label> and one answer widget —
+  followed here closely enough to exercise the inference logic, same
+  representative-not-scraped caveat as the rest of this fixture.
+-->
+<div id="application_form">
+  <ul>
+    <li class="field">
+      <label for="q_why">Why are you interested in this role?</label>
+      <textarea id="q_why"></textarea>
+    </li>
+    <li class="field">
+      <label for="q_years">How many years of experience do you have with Go?</label>
+      <input type="number" id="q_years" />
+    </li>
+    <li class="field">
+      <label for="q_auth">Are you legally authorized to work in the country of this job?</label>
+      <select id="q_auth">
+        <option value=""></option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </li>
+  </ul>
+</div>
+</body>
+</html>

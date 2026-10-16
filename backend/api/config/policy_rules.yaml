@@ -1,0 +1,17 @@
+# Policy Engine rule config (TDD.md §7.1) — declarative, not hardcoded
+# thresholds, so a rule change is a config edit, not a code change.
+# max_daily_generate_spend_usd starts null: the Cost Circuit Breaker
+# (§7.5) sets it from a rolling average of actual spend, not a guessed
+# constant chosen before any real usage data exists.
+rules:
+  # Bumped by hand whenever a threshold below changes — policy_decisions.rules_version
+  # (TDD.md §8) pins every audited decision to the exact config that made it,
+  # the same "never let a later change silently rewrite history" idea as
+  # applications.scoring_model_version.
+  version: policy-rules-v1
+  min_generate_score: 60
+  min_autosubmit_score: 80
+  require_review_if_bot_check: true
+  velocity_cap_per_day: 15
+  platform_allowlist: [greenhouse, lever]
+  max_daily_generate_spend_usd: null

@@ -1,0 +1,21 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/store/queries"
+    schema:
+      - "migrations/0001_users_profiles.up.sql"
+      - "migrations/0002_episodic_memory.up.sql"
+      - "migrations/0003_ingestion.up.sql"
+      - "migrations/0004_output_and_audit.up.sql"
+      - "migrations/0005_eval_and_mlops.up.sql"
+      - "migrations/0006_profile_fixes.up.sql"
+      - "migrations/0007_semantic_memory.up.sql"
+      - "migrations/0008_auth.up.sql"
+      - "migrations/0009_multitenancy.up.sql"
+    gen:
+      go:
+        package: "store"
+        out: "internal/store"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true

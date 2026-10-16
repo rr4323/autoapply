@@ -1,0 +1,18 @@
+<!--
+  Landing page for the ats-fixtures service (docs/BACKEND_BUILD_STEPS.md
+  Step 39) — exists so a plain GET / (what generic container-readiness
+  probes check by default, e.g. testcontainers' NginxContainer) succeeds
+  immediately instead of nginx's default 403 for a directory with no
+  root index.html. The actual fixtures live at /clean/ and /captcha/.
+-->
+<!DOCTYPE html>
+<html>
+<head><title>AgentOS local ATS fixtures</title></head>
+<body>
+<p>Local ATS fixture forms (docs/BACKEND_BUILD_STEPS.md Step 39):</p>
+<ul>
+  <li><a href="/clean/">/clean/</a> — a normal application form</li>
+  <li><a href="/captcha/">/captcha/</a> — the same form with bot-check signals (§7.4)</li>
+</ul>
+</body>
+</html>

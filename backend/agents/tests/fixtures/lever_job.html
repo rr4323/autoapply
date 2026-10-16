@@ -1,0 +1,70 @@
+<!--
+  Simplified, representative fixture — NOT scraped from a live Lever page
+  (same caveat as greenhouse_job.html). Real Lever job pages don't embed
+  the company name in the posting body (it lives in the URL path,
+  jobs.lever.co/{company}/...), so this fixture puts it in <title> —
+  the parser reads it from there rather than pretending the HTML body
+  carries it, to avoid fabricating a markup pattern Lever doesn't use.
+-->
+<!DOCTYPE html>
+<html>
+<head><title>Senior AI Engineer - Beta AI Inc</title></head>
+<body>
+<div class="posting-headline">
+  <h2>Senior AI Engineer</h2>
+</div>
+<div class="posting-categories">
+  <div class="posting-category department">Engineering</div>
+  <div class="posting-category commitment">Full-time</div>
+</div>
+<div class="section-wrapper">
+  <div class="section page-centered">
+    <div class="content">
+      <p>Join our AI team building the next generation of intelligent agents.</p>
+    </div>
+  </div>
+</div>
+<div class="section-wrapper">
+  <h3>Requirements</h3>
+  <div class="content">
+    <ul>
+      <li>Experience with LLMs and LangChain</li>
+      <li>Strong Python skills</li>
+      <li>Familiarity with vector databases</li>
+    </ul>
+  </div>
+</div>
+<div class="section-wrapper">
+  <h3>Responsibilities</h3>
+  <div class="content">
+    <ul>
+      <li>Build and maintain RAG pipelines</li>
+      <li>Collaborate with product on agent design</li>
+    </ul>
+  </div>
+</div>
+<!--
+  Application-questions section added for Step 20 (screener-question
+  extraction + field-type inference, TDD.md §6.5). Real Lever application
+  forms render custom questions as .application-question blocks, each
+  with an .application-label and one answer widget — followed here
+  closely enough to exercise the inference logic, same
+  representative-not-scraped caveat as the rest of this fixture.
+-->
+<div class="application-questions">
+  <div class="application-question">
+    <div class="application-label">When are you available to start?</div>
+    <input type="date" />
+  </div>
+  <div class="application-question">
+    <div class="application-label">What is your preferred work arrangement?</div>
+    <select>
+      <option value=""></option>
+      <option value="remote">Remote</option>
+      <option value="hybrid">Hybrid</option>
+      <option value="onsite">Onsite</option>
+    </select>
+  </div>
+</div>
+</body>
+</html>
